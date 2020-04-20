@@ -232,7 +232,7 @@ def get_top_ranked_movies(movie_url_dict, top_num=250):
 def get_directors_from_movies(movie_instances):
     directors = []
     for movie in movie_instances:
-        if movie.director in directors:
+        if tuple(movie.director.items())[0] in directors:
             continue
         else:
             directors.append(tuple(movie.director.items())[0])
