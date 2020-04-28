@@ -1,3 +1,8 @@
+###############################################
+# name: Weichen Zhang #########################
+# unique name: zweichen #######################
+###############################################
+
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
@@ -13,6 +18,37 @@ DATABASE_FILE = "imdb.sqlite"
 class Movie():
     def __init__(self, name=None, rank=None, category=None, length=None, genre=None, release_date=None, release_country=None, 
         rating=None, director=None, stars=None, relevant_moives=None):
+        '''Initiate the movie instance
+
+        Paramters
+        ---------
+        name: string
+
+        rank: int
+
+        category: string
+            one movie may have multiple category, but here all taken as one string
+
+        length: string
+            input is formatted like "2h 31min" and it will be transformed into minutes
+
+        genre: string
+
+        release_date: string
+            input is formatted like "date month year" and that will be transformed into format like "2012-10-01"
+
+        release_country: string
+
+        rating: float
+
+        director: stirng
+
+        start: dictionary
+            a dictionatry whose keys are star names and values are their page url
+
+        relevant_movies: dictionary
+            a dictionatry whose keys are movie titles and values are their page url
+        '''
         self.name = name
         self.rank = rank
         self.category = category
@@ -25,10 +61,17 @@ class Movie():
         self.stars = stars
         self.relevant_moives = relevant_moives
 
-    ##############################
-    # TODO
-    ##############################
     def info(self):
+        '''show the information of the movie
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        info: string
+        '''
         info = '''
         Tile: {title}
         Rank:{rank}                Rating:{rating}
@@ -40,6 +83,8 @@ class Movie():
         return info
 
     def cal_length(self, len_str):
+        '''transform the lenth from hour-minute to minutes
+        '''
         length = 0
         len_str_list = len_str.split(" ")
         for l in len_str_list:
@@ -50,6 +95,8 @@ class Movie():
         return length
 
     def transform_date(self, date_str):
+        '''transform the date string to year-month-date
+        '''
         Monthes = {"January":"01", "February":"02", "March":"03", "April":"04", 
                     "May":"05", "June":"06", "July":"07", "August":"08", 
                     "September":"09", "October":"10", "November":"11", "December":"12"}
@@ -68,7 +115,6 @@ class Movie():
 
             date = year + "-" + month + "-" + day
 
-        # print(date)
         return date
             
 def load_cache():
@@ -111,10 +157,21 @@ def save_cache(cache):
 
 
 def build_movie_url_dict(route_path):
+    '''scrape top ranked movies urls
+
+    Parameters
+    ----------
+    route_path: string
+        route url to the movie list page
+
+    Returns
+    -------
+    movie_url_dic: dictionary
+        a dictionary whose keys are movie titles and values are movie page urls
+    '''
     base_url = BASE_URL
 
     cache = load_cache()
-
     movie_url_dict = {}
 
     if base_url + route_path in cache:
@@ -139,6 +196,17 @@ def build_movie_url_dict(route_path):
 
 
 def bulid_movie_instances(movie_url):
+    '''create movie instance from the beautiful soup
+
+    Paramters
+    ---------
+    movie_url: string
+        url to the movie page
+
+    Returns
+    -------
+    Movie: instance of Movie
+    '''
     cache = load_cache()
 
     if movie_url in cache:
@@ -197,6 +265,20 @@ def bulid_movie_instances(movie_url):
     return Movie(name, rank, category, length, genre, release_date, release_country, rating, director, stars, relevant_moives)
 
 def get_director_knownfor(director_page_url):
+    '''get director's famous movies
+
+    Parameters
+    ----------
+    director_page_url: string
+
+    Returns
+    -------
+    dir_poster: string
+        source url to director's poster
+
+    knownfor: dictionary
+        a dictionary whose keys are director name and values are url of his page
+    '''
     cache = load_cache()
 
     if director_page_url in cache:
@@ -219,10 +301,21 @@ def get_director_knownfor(director_page_url):
 
     return dir_poster,knownfor
 
-def print_director_knownfor(director, knownfor):
-    pass
-
 def get_top_ranked_movies(movie_url_dict, top_num=250):
+    '''get top ranked movie instances from the web
+
+    Parameters
+    ----------
+    movie_url_dict: dictionary
+
+    top_num: int
+        the number of top movies you want to get
+
+    Returns
+    -------
+    top_movies: list
+        a list a movie instances
+    '''
     top_movies = []
     limit_num = min(len(movie_url_dict), top_num)
     for i, movie in enumerate(movie_url_dict):
@@ -233,6 +326,17 @@ def get_top_ranked_movies(movie_url_dict, top_num=250):
     return top_movies
 
 def get_directors_from_movies(movie_instances):
+    '''get directors from a list of movie instances
+
+    Parameters
+    ----------
+    movie_instances: list
+
+    Retuens
+    -------
+    directors: list
+        a list director page urls
+    '''
     directors = []
     for movie in movie_instances:
         if tuple(movie.director.items())[0] in directors:
@@ -247,6 +351,8 @@ def get_directors_from_movies(movie_instances):
 #################################################################
 
 def create_sql_tables():
+    '''create movie and director table in sql
+    '''
     conn = sqlite3.connect(DATABASE_FILE)
     cur = conn.cursor()
 
@@ -291,22 +397,34 @@ def create_sql_tables():
     conn.commit()
     conn.close()
 
-def insert_raw_into_table(db_cur, table_name, values):
-    value_format = ""
-    value_format += "(NULL"
-    for i in range(len(values)):
-        value_format += ", ?"
-    value_format += ")"
+# def insert_raw_into_table(db_cur, table_name, values):
+#     '''insert row in 
+#     '''
+#     value_format = ""
+#     value_format += "(NULL"
+#     for i in range(len(values)):
+#         value_format += ", ?"
+#     value_format += ")"
 
-    insert_command = '''
-        INSERT INTO {TABLE}
-        VALUES {VALUE}
-    '''.format(TABLE=table_name, VALUE=value_format)
+#     insert_command = '''
+#         INSERT INTO {TABLE}
+#         VALUES {VALUE}
+#     '''.format(TABLE=table_name, VALUE=value_format)
 
-    db_cur.execute(insert_command, values)
+#     db_cur.execute(insert_command, values)
 
 
 def insert_movies(movies, url2fk):
+    ''' insert row in Movie table
+
+    Parameters
+    ----------
+    movies: list
+        a list of movies
+
+    url2fk: dictionary
+        transform url of director page to foreign key id in Movie table
+    '''
     conn = sqlite3.connect(DATABASE_FILE)
     cur = conn.cursor()
 
@@ -325,6 +443,8 @@ def insert_movies(movies, url2fk):
 
 
 def insert_directors(directors):
+    '''insert row in Director table
+    '''
     conn = sqlite3.connect(DATABASE_FILE)
     cur = conn.cursor()
 
@@ -437,6 +557,8 @@ def homepage():
 
 @app.route('/top_movies/<top_k>', methods=['POST', 'GET'])
 def top_movies_render(top_k):
+    '''render the top k movies in the chrome
+    '''
     if request.method == 'POST':
         top_k = request.form["top_k"]
     top_k_movies = get_top_k_movies(int(top_k))
@@ -445,6 +567,8 @@ def top_movies_render(top_k):
 
 @app.route('/movies/<no>')
 def movie_detail_render(no):
+    '''render the chosen movie detail page
+    '''
     movies = get_top_k_movies(250)
     movie = movies[int(no) - 1]
     return render_template('movie_detail.html', 
@@ -456,17 +580,23 @@ def movie_detail_render(no):
 
 @app.route('/popular_director/<top_k>')
 def popular_director(top_k):
+    '''render popluar directors in the page
+    '''
     directors = get_most_popular_director(top_k)
     return render_template('director_list.html', directors=directors)
 
 @app.route('/<nm>/knownfor/<url>')
 def director_knownfor_render(nm, url):
+    '''render the page of diretor and his/her famous movies
+    '''
     poster, knownfor = get_director_knownfor(url.replace('_', '/'))
 
     return render_template('director_detail.html', name=nm.replace('-', ' '), poster=poster, movies=knownfor)
 
 @app.route('/distribution_of_release_date/<top_k>')
 def distribution_of_release_date(top_k):
+    '''plot the bar plot of the distribution of release date in flask
+    '''
     date_distribution = get_distribution_of_release_date(int(top_k))
 
     xvals = list(date_distribution.keys())
