@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>top ranked movies</title>
+</head>
+<body>
+    <p> Top ranked movies are...</p>
+    <ol>
+    {% for movie, url in movies %}
+        <li> <a href="../movies/{{url}}">{{ movie }}</a> </li>
+    {% endfor %}
+    </ol>
+    <p> You can also see 
+        <a href="../../distribution_of_release_date/{{movies|length}}">the distribution of release date</a>
+    and 
+        <a href="../../popular_director/{{movies|length}}">most popular director </a>.
+    </p>
+</body>
+</html>

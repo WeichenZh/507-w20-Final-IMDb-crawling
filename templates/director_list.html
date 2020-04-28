@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>most popluar director</title>
+</head>
+<body>
+    <p> Most Popular directors in top {{k}} movies:</p>
+    <ol>
+    {% for name, number, link in directors %}
+        <li> <a href="../{{name|replace(' ', '-')}}/knownfor/{{ link.replace('/', '_') }}">{{ name }}</a>&nbsp;&nbsp;&nbsp;&nbsp;
+        Movies on the top : {{ number }}</li>
+    {% endfor %}
+    </ol>
+</body>
+</html>

@@ -1,9 +1,10 @@
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
-import re
 import os
 import json
+import plotly.graph_objs as go
+from flask import Flask, render_template, request
 
 CACHE_FILE_NAME = "imdb_cache.json"
 BASE_URL = "http://www.imdb.com"
@@ -209,12 +210,14 @@ def get_director_knownfor(director_page_url):
         save_cache(cache)
 
     knownfor = {}
+    dir_poster = soup.find('img', id='name-poster')['src']
     knownfor_infos = soup.find('div', id='knownfor').find_all('div', class_='knownfor-title')
-    for work_info in knownfor_infos:
-        work_info = work_info.find('div', class_="knownfor-title-role").find('a')
-        knownfor[work_info.get_text(strip=True)] = BASE_URL + work_info['href']
+    for work_source in knownfor_infos:
+        work_info = work_source.find('div', class_="knownfor-title-role").find('a')
+        poster_source = work_source.find('div', class_='uc-add-wl-widget-container').find('img')['src']
+        knownfor[work_info.get_text(strip=True)] = (BASE_URL + work_info['href'], poster_source)
 
-    return knownfor
+    return dir_poster,knownfor
 
 def print_director_knownfor(director, knownfor):
     pass
@@ -239,6 +242,10 @@ def get_directors_from_movies(movie_instances):
 
     return directors
 
+#################################################################
+# database part
+#################################################################
+
 def create_sql_tables():
     conn = sqlite3.connect(DATABASE_FILE)
     cur = conn.cursor()
@@ -250,13 +257,13 @@ def create_sql_tables():
     create_movies = '''
         CREATE TABLE IF NOT EXISTS "Movies" (
             "Id"            INTEGER PRIMARY KEY AUTOINCREMENT,
-            "MovieTile"     TEXT NOT NULL,
+            "MovieTitle"    TEXT NOT NULL,
             "Rank"          INTEGER,
             "Category"      TEXT NOT NULL,
             "Length"        INTEGER NOT NULL,
             "Genre"         TEXT,
             "ReleaseDate"   TEXT NOT NULL,
-            "ReleaseCounty" TEXT NOT NULL,
+            "ReleaseCountry" TEXT NOT NULL,
             "Rating"        REAL NOT NULL,
             "DirectorId"    INTEGER NOT NULL,
             FOREIGN KEY ("DirectorId") REFERENCES Directors("Id")
@@ -270,7 +277,7 @@ def create_sql_tables():
     create_directors = '''
         CREATE TABLE IF NOT EXISTS "Directors" (
             "Id"            INTEGER PRIMARY KEY AUTOINCREMENT,
-            "FistName"      TEXT NOT NULL,
+            "FirstName"     TEXT NOT NULL,
             "LastName"      TEXT NOT NULL,
             "Link"          TEXT
         );
@@ -339,15 +346,177 @@ def insert_directors(directors):
     return url2id
 
 
+def get_top_k_movies_command(top_k):
+    command = '''
+    SELECT MovieTitle, Rank, Category, Length, Genre, ReleaseDate, ReleaseCountry, Rating, FirstName||' '||LastName
+    FROM Movies
+        JOIN Directors
+            ON Movies.DirectorId = Directors.Id
+    ORDER BY Rank
+    LIMIT {}
+    '''.format(top_k)
+
+    return command
+
+def get_top_k_movies(top_k):
+    command = get_top_k_movies_command(top_k)
+    conn = sqlite3.connect(DATABASE_FILE)
+    cur = conn.cursor()
+    cur.execute(command)
+    results = list(cur.fetchall())
+    conn.close()
+
+    return results
+
+def get_distribution_of_release_date(top_k):
+    distribution = {}
+    left = top_k
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cur = conn.cursor()
+
+    for year in range(1960, 2020, 10):
+        command = '''
+        SELECT COUNT(*)
+        FROM 
+            (SELECT *
+            FROM Movies
+            ORDER BY Rank
+            LIMIT {num})
+        WHERE ReleaseDate BETWEEN \'{date_1}\' AND \'{date_2}\'
+        '''.format(num=top_k, date_1 = str(year) + '-01-01', date_2 = str(year + 9) + '-12-31')
+        cur.execute(command)
+        distribution[str(year)+'s'] = cur.fetchall()[0][0]
+        left -= distribution[str(year)+'s']
+    distribution['else'] = left
+    conn.close()
+
+    return distribution
+
+def get_most_popular_director(top_k):
+    command = '''
+    SELECT FullName, COUNT(*), Link
+    FROM
+        (SELECT MovieTitle, Rank, Category, Length, Genre, ReleaseDate, ReleaseCountry, Rating, FirstName||' '||LastName AS FullName, Link
+        FROM Movies
+            JOIN Directors
+                ON Movies.DirectorId = Directors.Id
+        ORDER BY Rank
+        LIMIT {num})
+    GROUP BY FullName
+    ORDER BY COUNT(*) DESC
+    '''.format(num = top_k)
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cur = conn.cursor()
+    cur.execute(command)
+    results = list(cur.fetchall())
+    conn.close()
+
+    return results
+
+def release_date_plot(date_distribution):
+    xvals = list(date_distribution.keys())
+    yvals = list(date_distribution.values())
+
+    bar_data = go.Bar(x=xvals, y=yvals)
+    basic_layout = go.Layout()
+    fig = go.Figure(data = bar_data, layout = basic_layout)
+
+    fig.show()
+
+
+#############################################################
+# flask part ################################################
+#############################################################
+app = Flask(__name__)
+
+@app.route('/')
+def homepage():
+    return render_template('home.html')
+
+@app.route('/top_movies/<top_k>', methods=['POST', 'GET'])
+def top_movies_render(top_k):
+    if request.method == 'POST':
+        top_k = request.form["top_k"]
+    top_k_movies = get_top_k_movies(int(top_k))
+    tkm = [(m[0], m[1]) for m in top_k_movies]
+    return render_template('movie_list.html', movies=tkm)
+
+@app.route('/movies/<no>')
+def movie_detail_render(no):
+    movies = get_top_k_movies(250)
+    movie = movies[int(no) - 1]
+    return render_template('movie_detail.html', 
+        rank=movie[1], movieTitle=movie[0],
+        category=movie[2], length=movie[3],
+        genre=movie[4], release_date=movie[5],
+        release_country=movie[6], rating=movie[7],
+        director=movie[8])
+
+@app.route('/popular_director/<top_k>')
+def popular_director(top_k):
+    directors = get_most_popular_director(top_k)
+    return render_template('director_list.html', directors=directors)
+
+@app.route('/<nm>/knownfor/<url>')
+def director_knownfor_render(nm, url):
+    poster, knownfor = get_director_knownfor(url.replace('_', '/'))
+
+    return render_template('director_detail.html', name=nm.replace('-', ' '), poster=poster, movies=knownfor)
+
+@app.route('/distribution_of_release_date/<top_k>')
+def distribution_of_release_date(top_k):
+    date_distribution = get_distribution_of_release_date(int(top_k))
+
+    xvals = list(date_distribution.keys())
+    yvals = list(date_distribution.values())
+
+    bar_data = go.Bar(x=xvals, y=yvals, width=0.6)
+    basic_layout = go.Layout(
+                            xaxis = go.XAxis(domain = [0,0.6]))
+    fig = go.Figure(data = bar_data, layout = basic_layout)
+
+    div = fig.to_html(full_html=False)
+    return render_template("plot.html", plot_div=div, top_k=top_k)
+
 if __name__ == "__main__":
-    dic = build_movie_url_dict("/chart/top")
-    movies_top_250 = get_top_ranked_movies(dic, 80)
-    directors = get_directors_from_movies(movies_top_250)
 
-    #if not os.path.exists(DATABASE_FILE):
-    create_sql_tables()
+    if not os.path.exists(DATABASE_FILE):
+        ###############################################
+        # Part 1: if database doesn't exist, scrapping and 
+        # crawling data from the web
+        #
+        # Warning: this procedure is really time consuming even with the cache.
+        # If you just want to test part 1 and 2, small k is recommanded. Otherwise, please run
+        # this program with database.
+        ###############################################
+        dic = build_movie_url_dict("/chart/top")
+        while True:
+            k = input("Enter a number of records you want to get(max:250):")
+            if k.isnumeric():
+                k = int(k)
+                if k > 250:
+                    print("Out of boundary. Please enter again.")
+                    continue
+                break
+            else:
+                print("Invalid input. Please enter again.")
+                continue
+        movies_top_250 = get_top_ranked_movies(dic, k)
+        directors = get_directors_from_movies(movies_top_250)
+        
+        ###############################################
+        # Part 2: create database from scrapped data
+        ###############################################
+        create_sql_tables()
+        url2fk = insert_directors(directors)
+        insert_movies(movies_top_250, url2fk)
 
-    url2fk = insert_directors(directors)
-    insert_movies(movies_top_250, url2fk)
+    ##################################################
+    # Part 3: Showing information of the data by Flask app
+    ##################################################
+    print("run app")
+    app.run(debug=True)
 
-    # conn = sqlite3.connect("imdb22.sqlite")
+

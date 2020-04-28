@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{ name }}</title>
+
+  <style>
+    #warp{
+        display: flex;
+        justify-content: flex-start;
+    }
+
+    #div1{
+        width:200px;
+        height:250px;
+        border:1px soild #f00;
+    }
+
+    #div2{
+        width:150px;
+        height:220px;
+        border:1px soild #f00;
+    }
+
+    #title{
+        width:150px;
+        height:50px;
+        border:1px soild #f00;
+        font-family: sans-serif;
+    }
+
+  </style>
+
+</head>
+<body>
+    <h1>
+        {{ name }}
+    </h1>
+    <img src="{{ poster }}">
+    <h2>
+        Known For
+    </h2>
+    <div id='warp'>
+    {% for movie in movies %}
+        <div id='div1'>
+            <div id='div2'>
+                <img src="{{movies[movie][1]}}">
+            </div>
+            <div id='title'> {{ movie }}</div>
+        </div>
+    {% endfor %}
+    </div>
+</body>
+</html>
